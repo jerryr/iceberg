@@ -116,5 +116,8 @@ func updateServices(cli *client.Client, services map[string] *Service) {
 			services[svcname] = svc
 		}
 		updateVariables(svc, labels)
+		if c.State == "running" {
+			svc.AddContainer(c.ID)
+		}
 	}
 }
