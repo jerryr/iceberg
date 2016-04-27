@@ -28,7 +28,7 @@ func main() {
 	filter := filters.NewArgs()
 	filter.Add("type", "container")
 	filter.Add("event", "start")
-	filter.Add("event", "stop")
+	filter.Add("event", "die")
 	read, err := cli.Events(context.Background(), types.EventsOptions{Filters: filter})
 	if err != nil {
 		panic("Cannot get event stream from Docker")
@@ -50,9 +50,11 @@ func main() {
 			services[svcname] = service
 		}
 		updateVariables(service, event.Actor.Attributes)
-		if evt == "start" {
+		fmt.Println("Event type = ", evt)
+		switch evt {
+		case "start":
 			service.AddContainer(containerid)
-		} else if evt == "stop" {
+		case "die":
 			service.RemoveContainer(containerid)
 		}
 		fmt.Printf("Service updated: %+v\n", service)
