@@ -49,6 +49,7 @@ func main() {
 			service = NewService(svcname)
 			services[svcname] = service
 		}
+		updateVariables(service, event.Actor.Attributes)
 		if evt == "start" {
 			service.AddContainer(containerid)
 		} else if evt == "stop" {
@@ -68,6 +69,34 @@ func main() {
 	}
 }
 
+func updateVariables(svc *Service, labels map[string] string) {
+	str, ok := labels[MinimumCountLabel]
+	if ! ok {
+		fmt.Println("No value given for minumum count!!")
+	} else {
+		var min int64
+		min, err := strconv.ParseInt(str, 10, 64)
+		if err != nil {
+			fmt.Printf("Could not parse %v into a float\n", str)
+		} else {
+			svc.min = min
+		}
+	}
+	str, ok = labels[KillProbabilityLabel]
+	if ! ok {
+		fmt.Println("No value given for kill probability!!")
+	} else {
+		var kp float64
+		kp, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			fmt.Printf("Could not parse %v into an int\n", str)
+		} else {
+			svc.killProb = kp
+		}
+	}
+
+}
+
 func updateServices(cli *client.Client, services map[string] *Service) {
 	fmt.Println("Updating...")
 	options := types.ContainerListOptions{All: true}
@@ -84,30 +113,6 @@ func updateServices(cli *client.Client, services map[string] *Service) {
 			svc = NewService(svcname)
 			services[svcname] = svc
 		}
-		var str string
-		str, ok = labels[MinimumCountLabel]
-		if ! ok {
-			fmt.Println("No value given for minumum count!!")
-		} else {
-			var min int64
-			min, err = strconv.ParseInt(str, 10, 64)
-			if err != nil {
-				fmt.Printf("Could not parse %v into a float\n", str)
-			} else {
-				svc.min = min
-			}
-		}
-		str, ok = labels[KillProbabilityLabel]
-		if ! ok {
-			fmt.Println("No value given for kill probability!!")
-		} else {
-			var kp float64
-			kp, err = strconv.ParseFloat(str, 64)
-			if err != nil {
-				fmt.Printf("Could not parse %v into an int\n", str)
-			} else {
-				svc.killProb = kp
-			}
-		}
+		updateVariables(svc, labels)
 	}
 }
