@@ -5,9 +5,18 @@ import (
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
 	"golang.org/x/net/context"
-	"time"
 	"strconv"
+	"encoding/json"
+	"github.com/docker/engine-api/types/events"
+	"io"
+	"github.com/docker/engine-api/types/filters"
 )
+const (
+	ServiceNameLabel = "com.docker.compose.service"
+	MinimumCountLabel string = "iceberg.minimum_count"
+	KillProbabilityLabel string = "iceberg.kill_probability"
+)
+
 func main() {
 	fmt.Println("Starting Iceberg...")
 	cli, err := client.NewEnvClient()
@@ -15,15 +24,47 @@ func main() {
 		panic(err)
 	}
 	services := make(map[string] *Service)
-	timer := time.NewTicker(time.Second * 5)
 	updateServices(cli, services)
-	go func() {
-		for _ = range timer.C {
-			updateServices(cli, services)
+	filter := filters.NewArgs()
+	filter.Add("type", "container")
+	filter.Add("event", "start")
+	filter.Add("event", "stop")
+	read, err := cli.Events(context.Background(), types.EventsOptions{Filters: filter})
+	if err != nil {
+		panic("Cannot get event stream from Docker")
+	}
+	defer read.Close()
+	dec := json.NewDecoder(read)
+	for {
+		var event events.Message
+		err := dec.Decode(&event)
+		if err != nil && err == io.EOF {
+			break;
 		}
-	}()
-	select {
+		svcname := event.Actor.Attributes[ServiceNameLabel]
+		evt := event.Action
+		containerid := event.ID
+		service, ok := services[svcname]
+		if !ok {
+			service = NewService(svcname)
+			services[svcname] = service
+		}
+		if evt == "start" {
+			service.AddContainer(containerid)
+		} else if evt == "stop" {
+			service.RemoveContainer(containerid)
+		}
+		fmt.Printf("Service updated: %+v\n", service)
+	}
 
+	//timer := time.NewTicker(time.Second * 5)
+	//go func() {
+	//	for _ = range timer.C {
+	//		updateServices(cli, services)
+	//	}
+	//}()
+	select {
+		// Sleep forever
 	}
 }
 
@@ -37,14 +78,14 @@ func updateServices(cli *client.Client, services map[string] *Service) {
 
 	for _, c := range containers {
 		labels := c.Labels
-		svcname := labels["com.docker.compose.service"]
+		svcname := labels[ServiceNameLabel]
 		svc, ok := services[svcname]
 		if ! ok {
 			svc = NewService(svcname)
 			services[svcname] = svc
 		}
 		var str string
-		str, ok = labels["iceberg.minimum_count"]
+		str, ok = labels[MinimumCountLabel]
 		if ! ok {
 			fmt.Println("No value given for minumum count!!")
 		} else {
@@ -56,7 +97,7 @@ func updateServices(cli *client.Client, services map[string] *Service) {
 				svc.min = min
 			}
 		}
-		str, ok = labels["iceberg.kill_probability"]
+		str, ok = labels[KillProbabilityLabel]
 		if ! ok {
 			fmt.Println("No value given for kill probability!!")
 		} else {
