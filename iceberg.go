@@ -10,21 +10,36 @@ import (
 	"github.com/docker/engine-api/types/events"
 	"io"
 	"github.com/docker/engine-api/types/filters"
+	"time"
+	"sync"
+	"math/rand"
 )
 const (
-	ServiceNameLabel = "com.docker.compose.service"
+	ServiceNameLabel string = "com.docker.compose.service"
 	MinimumCountLabel string = "iceberg.minimum_count"
 	KillProbabilityLabel string = "iceberg.kill_probability"
+	AutostartLabel string = "iceberg.autostart"
 )
 
+var rwlock sync.RWMutex
+var dockerClient *client.Client
 func main() {
 	fmt.Println("Starting Iceberg...")
+	ticker := time.NewTicker(time.Second * 5)
+	rand.Seed(time.Now().Unix())
 	cli, err := client.NewEnvClient()
+	dockerClient = cli
 	if err != nil {
 		panic(err)
 	}
 	services := make(map[string] *Service)
 	updateServices(cli, services)
+
+	go func() {
+		for _ = range ticker.C {
+			performChaos(services)
+		}
+	}()
 	filter := filters.NewArgs()
 	filter.Add("type", "container")
 	filter.Add("event", "start")
@@ -47,7 +62,9 @@ func main() {
 		service, ok := services[svcname]
 		if !ok {
 			service = NewService(svcname)
+			rwlock.Lock()
 			services[svcname] = service
+			rwlock.Unlock()
 		}
 		updateVariables(service, event.Actor.Attributes)
 		fmt.Println("Event type = ", evt)
@@ -60,24 +77,17 @@ func main() {
 		fmt.Printf("Service updated: %+v\n", service)
 	}
 
-	//timer := time.NewTicker(time.Second * 5)
-	//go func() {
-	//	for _ = range timer.C {
-	//		updateServices(cli, services)
-	//	}
-	//}()
 	select {
 		// Sleep forever
 	}
 }
 
 func updateVariables(svc *Service, labels map[string] string) {
+	rwlock.Lock()
 	str, ok := labels[MinimumCountLabel]
-	if ! ok {
-		fmt.Println("No value given for minumum count!!")
-	} else {
-		var min int64
-		min, err := strconv.ParseInt(str, 10, 64)
+	if ok {
+		var min int
+		min, err := strconv.Atoi(str)
 		if err != nil {
 			fmt.Printf("Could not parse %v into a float\n", str)
 		} else {
@@ -85,9 +95,7 @@ func updateVariables(svc *Service, labels map[string] string) {
 		}
 	}
 	str, ok = labels[KillProbabilityLabel]
-	if ! ok {
-		fmt.Println("No value given for kill probability!!")
-	} else {
+	if ok {
 		var kp float64
 		kp, err := strconv.ParseFloat(str, 64)
 		if err != nil {
@@ -96,6 +104,16 @@ func updateVariables(svc *Service, labels map[string] string) {
 			svc.killProb = kp
 		}
 	}
+
+	str, ok = labels[AutostartLabel]
+	if ok {
+		var as bool
+		as, err := strconv.ParseBool(str)
+		if err == nil {
+			svc.chaosActive = as
+		}
+	}
+	rwlock.Unlock()
 
 }
 
@@ -106,6 +124,8 @@ func updateServices(cli *client.Client, services map[string] *Service) {
 	if err != nil {
 		panic(err)
 	}
+	// Not locking because the eventing stuff isnt active yet
+	//rwlock.Lock()
 
 	for _, c := range containers {
 		labels := c.Labels
@@ -120,4 +140,16 @@ func updateServices(cli *client.Client, services map[string] *Service) {
 			svc.AddContainer(c.ID)
 		}
 	}
+
+	//rwlock.Unlock()
+}
+
+func performChaos(services map[string] *Service) {
+	rwlock.RLock()
+	for _, svc := range services {
+		if svc.chaosActive {
+			svc.chaosify()
+		}
+	}
+	rwlock.RUnlock()
 }
