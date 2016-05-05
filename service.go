@@ -5,6 +5,7 @@ import (
 	"github.com/docker/distribution/context"
 	"os/exec"
 	"strconv"
+	"log"
 )
 
 type Service struct {
@@ -29,11 +30,10 @@ func (svc *Service) RemoveContainer(containerid string) {
 }
 
 func (svc *Service) chaosify() {
-	println("Chaosing", svc.id)
 	if rand.Float64() <= svc.killProb && len(svc.running) > svc.min {
 		cankill := len(svc.running) - svc.min
 		tokill := rand.Intn(cankill) + 1
-		println(svc.id, "tokill =", tokill)
+		log.Println(svc.id, "tokill =", tokill)
 		// first collect the container ids in a slice
 		ids := []string{}
 		for k := range svc.running {
@@ -53,16 +53,16 @@ func (svc *Service) chaosify() {
 }
 
 func killContainer(containerid string) {
-	println ("Killing ", containerid)
+	log.Println ("Killing ", containerid)
 	data, err := dockerClient.ContainerInspect(context.Background(), containerid)
 	if err != nil {
-		println ("Could not inspect container", containerid)
+		log.Println ("Could not inspect container", containerid)
 		return
 	}
 	pid := data.State.Pid
 	cmd := exec.Command("docker-machine", "ssh", "default", "sudo", "kill", "-9", strconv.Itoa(pid))
 	err = cmd.Run()
 	if err != nil {
-		println ("Could not kill container ", containerid, " err = ", err)
+		log.Println ("Could not kill container ", containerid, " err = ", err)
 	}
 }

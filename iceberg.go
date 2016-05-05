@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
 	"golang.org/x/net/context"
@@ -13,6 +12,7 @@ import (
 	"time"
 	"sync"
 	"math/rand"
+	"log"
 )
 const (
 	ServiceNameLabel string = "com.docker.compose.service"
@@ -24,7 +24,7 @@ const (
 var rwlock sync.RWMutex
 var dockerClient *client.Client
 func main() {
-	fmt.Println("Starting Iceberg...")
+	log.Println("Starting Iceberg...")
 	ticker := time.NewTicker(time.Second * 5)
 	rand.Seed(time.Now().Unix())
 	cli, err := client.NewEnvClient()
@@ -50,6 +50,7 @@ func main() {
 	}
 	defer read.Close()
 	dec := json.NewDecoder(read)
+	log.Println("Listening for Docker events...")
 	for {
 		var event events.Message
 		err := dec.Decode(&event)
@@ -61,20 +62,21 @@ func main() {
 		containerid := event.ID
 		service, ok := services[svcname]
 		if !ok {
+			log.Println("Detected a new service", svcname)
 			service = NewService(svcname)
 			rwlock.Lock()
 			services[svcname] = service
 			rwlock.Unlock()
 		}
 		updateVariables(service, event.Actor.Attributes)
-		fmt.Println("Event type = ", evt)
+		//fmt.Println("Event type = ", evt)
 		switch evt {
 		case "start":
 			service.AddContainer(containerid)
 		case "die":
 			service.RemoveContainer(containerid)
 		}
-		fmt.Printf("Service updated: %+v\n", service)
+		//fmt.Printf("Service updated: %+v\n", service)
 	}
 
 	select {
@@ -89,7 +91,7 @@ func updateVariables(svc *Service, labels map[string] string) {
 		var min int
 		min, err := strconv.Atoi(str)
 		if err != nil {
-			fmt.Printf("Could not parse %v into a float\n", str)
+			log.Printf("Could not parse %v into a float\n", str)
 		} else {
 			svc.min = min
 		}
@@ -99,7 +101,7 @@ func updateVariables(svc *Service, labels map[string] string) {
 		var kp float64
 		kp, err := strconv.ParseFloat(str, 64)
 		if err != nil {
-			fmt.Printf("Could not parse %v into an int\n", str)
+			log.Printf("Could not parse %v into an int\n", str)
 		} else {
 			svc.killProb = kp
 		}
@@ -118,7 +120,7 @@ func updateVariables(svc *Service, labels map[string] string) {
 }
 
 func updateServices(cli *client.Client, services map[string] *Service) {
-	fmt.Println("Updating...")
+	log.Println("Getting initial state...")
 	options := types.ContainerListOptions{All: true}
 	containers, err := cli.ContainerList(context.Background(), options)
 	if err != nil {
@@ -132,6 +134,7 @@ func updateServices(cli *client.Client, services map[string] *Service) {
 		svcname := labels[ServiceNameLabel]
 		svc, ok := services[svcname]
 		if ! ok {
+			log.Println("Detected a new service", svcname)
 			svc = NewService(svcname)
 			services[svcname] = svc
 		}
