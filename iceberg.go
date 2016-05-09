@@ -1,28 +1,30 @@
 package main
 
 import (
+	"encoding/json"
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
-	"golang.org/x/net/context"
-	"strconv"
-	"encoding/json"
 	"github.com/docker/engine-api/types/events"
-	"io"
 	"github.com/docker/engine-api/types/filters"
-	"time"
-	"sync"
-	"math/rand"
+	"golang.org/x/net/context"
+	"io"
 	"log"
+	"math/rand"
+	"strconv"
+	"sync"
+	"time"
 )
+
 const (
-	ServiceNameLabel string = "com.docker.compose.service"
-	MinimumCountLabel string = "iceberg.minimum_count"
+	ServiceNameLabel     string = "com.docker.compose.service"
+	MinimumCountLabel    string = "iceberg.minimum_count"
 	KillProbabilityLabel string = "iceberg.kill_probability"
-	AutostartLabel string = "iceberg.autostart"
+	AutostartLabel       string = "iceberg.autostart"
 )
 
 var rwlock sync.RWMutex
 var dockerClient *client.Client
+
 func main() {
 	log.Println("Starting Iceberg...")
 	ticker := time.NewTicker(time.Second * 5)
@@ -32,7 +34,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	services := make(map[string] *Service)
+	services := make(map[string]*Service)
 	updateServices(cli, services)
 
 	go func() {
@@ -55,7 +57,7 @@ func main() {
 		var event events.Message
 		err := dec.Decode(&event)
 		if err != nil && err == io.EOF {
-			break;
+			break
 		}
 		svcname := event.Actor.Attributes[ServiceNameLabel]
 		evt := event.Action
@@ -80,11 +82,11 @@ func main() {
 	}
 
 	select {
-		// Sleep forever
+	// Sleep forever
 	}
 }
 
-func updateVariables(svc *Service, labels map[string] string) {
+func updateVariables(svc *Service, labels map[string]string) {
 	rwlock.Lock()
 	str, ok := labels[MinimumCountLabel]
 	if ok {
@@ -119,7 +121,7 @@ func updateVariables(svc *Service, labels map[string] string) {
 
 }
 
-func updateServices(cli *client.Client, services map[string] *Service) {
+func updateServices(cli *client.Client, services map[string]*Service) {
 	log.Println("Getting initial state...")
 	options := types.ContainerListOptions{All: true}
 	containers, err := cli.ContainerList(context.Background(), options)
@@ -133,7 +135,7 @@ func updateServices(cli *client.Client, services map[string] *Service) {
 		labels := c.Labels
 		svcname := labels[ServiceNameLabel]
 		svc, ok := services[svcname]
-		if ! ok {
+		if !ok {
 			log.Println("Detected a new service", svcname)
 			svc = NewService(svcname)
 			services[svcname] = svc
@@ -147,7 +149,7 @@ func updateServices(cli *client.Client, services map[string] *Service) {
 	//rwlock.Unlock()
 }
 
-func performChaos(services map[string] *Service) {
+func performChaos(services map[string]*Service) {
 	rwlock.RLock()
 	for _, svc := range services {
 		if svc.chaosActive {

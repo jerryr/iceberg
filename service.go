@@ -1,23 +1,23 @@
 package main
 
 import (
-	"math/rand"
 	"github.com/docker/distribution/context"
+	"log"
+	"math/rand"
 	"os/exec"
 	"strconv"
-	"log"
 )
 
 type Service struct {
-	id string
-	min int
-	killProb float64
-	running map[string] bool
+	id          string
+	min         int
+	killProb    float64
+	running     map[string]bool
 	chaosActive bool
 }
 
 func NewService(svcname string) *Service {
-	svc := &Service{id: svcname, running: make(map[string] bool)}
+	svc := &Service{id: svcname, running: make(map[string]bool)}
 	return svc
 }
 
@@ -53,16 +53,16 @@ func (svc *Service) chaosify() {
 }
 
 func killContainer(containerid string) {
-	log.Println ("Killing ", containerid)
+	log.Println("Killing ", containerid)
 	data, err := dockerClient.ContainerInspect(context.Background(), containerid)
 	if err != nil {
-		log.Println ("Could not inspect container", containerid)
+		log.Println("Could not inspect container", containerid)
 		return
 	}
 	pid := data.State.Pid
 	cmd := exec.Command("docker-machine", "ssh", "default", "sudo", "kill", "-9", strconv.Itoa(pid))
 	err = cmd.Run()
 	if err != nil {
-		log.Println ("Could not kill container ", containerid, " err = ", err)
+		log.Println("Could not kill container ", containerid, " err = ", err)
 	}
 }
